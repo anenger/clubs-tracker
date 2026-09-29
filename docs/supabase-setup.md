@@ -40,8 +40,8 @@ EA exposes the club, player, and match records publicly, so anonymous browser re
 
 - `tracked_clubs`: public `SELECT` on tracking and freshness columns only.
 - `club_matches`: public `SELECT` on identity, ordering, competition, and payload columns only.
-- `club_snapshots`: no public access.
-- All table writes and the ingestion/claim RPCs: server roles only.
+- `club_snapshots` and `club_refresh_leases`: no public access.
+- All table writes and the `ingest_club_observations`, `claim_club_refresh`, and `claim_tracked_clubs` RPCs: server roles only.
 
 RLS remains enabled on every table. The browser publishable key cannot inspect raw snapshots, mutate history, or invoke privileged ingestion. The `clubs-api` function uses `@supabase/server` publishable authentication for callers and an internal admin client for atomic persistence.
 
@@ -50,6 +50,7 @@ RLS remains enabled on every table. The browser publishable key cannot inspect r
 - Only `common-gen5` and `leagueMatch`, `friendlyMatch`, or `playoffMatch` are accepted.
 - Search accepts a 2–60 character club name. Detail requests accept only numeric club IDs.
 - A detail refresh fetches five fixed EA endpoints sequentially: club info, members, selected-competition matches, overall stats, and member career stats. Callers cannot choose arbitrary upstream URLs or submit statistics.
+- Each club and competition gets at most one live EA refresh every five minutes. The function claims a lease in `club_refresh_leases` first; if another request holds it, the function returns the latest stored snapshots instead of calling EA, or `429` if nothing is stored yet. If the lease check itself fails, the function fetches live data rather than going down.
 - Successful raw observations and validated matches are ingested atomically. Matches upsert by platform, club, competition, and match ID; older observations cannot overwrite newer payloads.
 - React Query keeps browser data fresh for five minutes. Collection happens only when someone views a club; no background schedule is currently configured.
 - `complete` describes one successful five-endpoint collection attempt, not complete historical coverage. EA exposes only recent matches, so old matches and missed windows cannot be backfilled reliably.
@@ -69,7 +70,7 @@ Then verify with the deployed app:
 
 1. Search for a real club.
 2. Select it and confirm members and recent matches load.
-3. Refresh the same club and confirm match rows do not duplicate.
+3. Refresh the same club and confirm match rows do not duplicate. A second request within five minutes should return quickly with the same `updatedAt`, showing it came from stored snapshots.
 4. Confirm a publishable-key read of `club_matches` succeeds.
 5. Confirm publishable-key reads of `club_snapshots` and all writes fail.
 
@@ -77,4 +78,6 @@ Then verify with the deployed app:
 
 No destructive retention runs automatically. Raw snapshot volume grows with successful detail refreshes; unique match volume grows as new matches appear. The indexed `stored_at` column supports a future batched snapshot-retention policy.
 
-The Edge Function spaces upstream calls and enforces timeouts, but it does not yet implement a distributed abuse limit. Monitor Supabase invocation, database, and egress usage before broad promotion. If needed, add database-backed request throttling without changing the browser analytics contract.
+Club detail refreshes are rate limited per club and competition, but club search is not throttled beyond browser caching. Monitor Supabase invocation, database, and egress usage before broad promotion. `club_refresh_leases` holds one small row per viewed club and competition.
+
+Vercel does not deploy Supabase changes. After changing a migration or the Edge Function, run `pnpm dlx supabase db push --linked` or `pnpm dlx supabase functions deploy clubs-api --use-api`.
