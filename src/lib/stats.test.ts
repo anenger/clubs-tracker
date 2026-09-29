@@ -7,6 +7,8 @@ import {
   normalizeClubs,
   normalizeMatches,
   normalizeMembers,
+  normalizeOverall,
+  normalizeCareer,
   number,
   perGame,
 } from "./stats";
@@ -114,4 +116,116 @@ test("official outcomes take priority over score for forfeits", () => {
   assert.equal(match.awardedByDnf, true);
   assert.equal(matchResult({ ...match, outcome: undefined }), "L");
   assert.equal(matchResult({ ...match, outcome: undefined, goals: null }), "—");
+});
+
+test("normalization preserves opponent identities, roles and raw keeper/time fields", () => {
+  const [match] = normalizeMatches(
+    [
+      {
+        matchId: 9,
+        timestamp: 20,
+        clubs: { own: { goals: "0" }, other: { goals: "1" } },
+        players: {
+          own: {
+            keeper: {
+              playername: "Keeper",
+              pos: "goalkeeper",
+              saves: "7",
+              cleansheetsgk: "0",
+              cleansheetsdef: "1",
+              goalsconceded: "1",
+              secondsPlayed: "7200",
+              gameTime: "99",
+              man_of_the_match: "1",
+              passattempts: "10",
+            },
+          },
+          other: {
+            striker: {
+              playername: "Striker",
+              pos: "forward",
+              goals: "1",
+              shots: "3",
+              mom: "0",
+              realtimegame: "900",
+            },
+          },
+        },
+      },
+    ],
+    "own",
+    "friendlyMatch",
+  );
+  assert.ok(match);
+  assert.equal(match.competition, "friendlyMatch");
+  assert.equal(match.opponentId, "other");
+  assert.equal(match.players[0]?.saves, 7);
+  assert.equal(match.players[0]?.cleanSheets, 0);
+  assert.equal(match.players[0]?.passesMade, null);
+  assert.equal(match.players[0]?.secondsPlayed, 7200);
+  assert.equal(match.opponentPlayers?.[0]?.id, "striker");
+  assert.equal(match.opponentPlayers?.[0]?.secondsPlayed, null);
+});
+
+test("overall and career map EA field names without inventing unavailable totals", () => {
+  assert.equal(normalizeOverall([]), null);
+  assert.equal(normalizeOverall(null), null);
+  const overall = normalizeOverall([
+    {
+      gamesPlayed: "20",
+      ties: "3",
+      wstreak: "0",
+      unbeatenstreak: "4",
+      skillRating: "1200",
+    },
+  ]);
+  assert.equal(overall?.games, 20);
+  assert.equal(overall?.draws, 3);
+  assert.equal(overall?.winStreak, 0);
+  assert.equal(overall?.goals, null);
+  assert.deepEqual(normalizeCareer(null), []);
+  assert.deepEqual(
+    normalizeCareer({
+      members: [
+        {
+          name: "Player",
+          gamesPlayed: "8",
+          goals: "0",
+          favoritePosition: "goalkeeper",
+          manOfTheMatch: "2",
+        },
+        { goals: "99" },
+      ],
+    }),
+    [
+      {
+        name: "Player",
+        games: 8,
+        goals: 0,
+        assists: null,
+        rating: null,
+        role: "goalkeeper",
+        motm: 2,
+      },
+    ],
+  );
+});
+
+test("demo squad goals and event denominators are coherent on both teams", () => {
+  assert.equal(demo.matches.length, 24);
+  for (const match of demo.matches) {
+    assert.equal(
+      match.players.reduce((sum, p) => sum + (p.goals ?? 0), 0),
+      match.goals,
+    );
+    assert.equal(
+      match.opponentPlayers?.reduce((sum, p) => sum + (p.goals ?? 0), 0),
+      match.conceded,
+    );
+    for (const p of [...match.players, ...(match.opponentPlayers ?? [])]) {
+      assert.ok(p.goals! <= p.shots!);
+      assert.ok(p.passesMade! <= p.passAttempts!);
+      assert.ok(p.tacklesMade! <= p.tackleAttempts!);
+    }
+  }
 });

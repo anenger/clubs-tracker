@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRight,
   ChevronRight,
@@ -18,9 +18,11 @@ import { request } from "@/lib/client-api";
 import {
   format,
   insights,
+  matchPlayer,
   perGame,
   type Club,
   type ClubData,
+  type Match,
 } from "@/lib/stats";
 import { useSelection } from "./use-selection";
 import { ClubSearch } from "./club-search";
@@ -28,30 +30,122 @@ import { Comparison } from "./comparison";
 import { Development } from "./development";
 import { Matches, RatingChart } from "./matches";
 import { FootballMark, PitchMark } from "./football-mark";
+import {
+  competitions,
+  type HistoryData,
+  type MatchType,
+} from "@/lib/history-types";
+import { mergeMatchHistory } from "@/lib/match-history";
+import { AnalyticsDashboard } from "./analytics-dashboard";
+import { MatchReport } from "./match-report";
 
-const tabs = ["Overview", "Matches", "Compare", "Improve"] as const;
+const tabs = [
+  "Overview",
+  "Matches",
+  "Analytics",
+  "Compare",
+  "Improve",
+] as const;
 type Tab = (typeof tabs)[number];
 
 export function Dashboard() {
+  const queryClient = useQueryClient();
   const [selection, saveSelection] = useSelection();
   const [tab, setTab] = useState<Tab>("Overview");
   const [searching, setSearching] = useState(false);
+  const [competition, setCompetition] = useState<MatchType>("leagueMatch");
+  const [report, setReport] = useState<Match | null>(null);
+  const [visibleMatches, setVisibleMatches] = useState(20);
+  const [analysisWindow, setAnalysisWindow] = useState("all");
+  const [analysisRole, setAnalysisRole] = useState("all");
+  const [excludeDnf, setExcludeDnf] = useState(false);
   const isDemo = selection.club.id === "demo";
   const query = useQuery({
-    queryKey: ["club", "common-gen5", selection.club.id],
-    queryFn: ({ signal }) =>
-      request<ClubData>(`/api/clubs?id=${selection.club.id}`, signal),
+    queryKey: ["club", "common-gen5", selection.club.id, competition],
+    queryFn: async ({ signal }) => {
+      const result = await request<ClubData>(
+        `/api/clubs?id=${selection.club.id}&competition=${competition}`,
+        signal,
+      );
+      void queryClient.invalidateQueries({
+        queryKey: ["club-history", selection.club.id, competition],
+      });
+      return result;
+    },
     enabled: !isDemo,
+    refetchInterval: 5 * 60_000,
   });
-  const data = isDemo ? demo : query.data;
+  const data = useMemo(
+    () =>
+      isDemo
+        ? {
+            ...demo,
+            matches: demo.matches.filter(
+              (m) => (m.competition ?? "leagueMatch") === competition,
+            ),
+          }
+        : query.data,
+    [isDemo, competition, query.data],
+  );
+  const historyQuery = useQuery({
+    queryKey: ["club-history", selection.club.id, competition],
+    queryFn: async ({ signal }) => {
+      const result = await request<HistoryData>(
+        `/api/clubs/history?id=${selection.club.id}&competition=${competition}&limit=200`,
+        signal,
+      );
+      if (result.status === "error")
+        throw new Error(result.warning || "Collected history is unavailable.");
+      return result;
+    },
+    enabled: !isDemo && !!data,
+  });
+  const history: HistoryData | undefined = isDemo
+    ? undefined
+    : historyQuery.error
+      ? {
+          status: "error",
+          matches: historyQuery.data?.matches ?? [],
+          trackingStartedAt: historyQuery.data?.trackingStartedAt ?? null,
+          lastSyncedAt: historyQuery.data?.lastSyncedAt ?? null,
+          hasMore: historyQuery.data?.hasMore ?? false,
+          warning:
+            "Collected history could not be loaded. Recent EA results are still available.",
+        }
+      : historyQuery.data;
+  const matches = useMemo(
+    () =>
+      mergeMatchHistory(
+        data?.matches ?? [],
+        historyQuery.data?.matches ?? [],
+        competition,
+      ),
+    [data?.matches, historyQuery.data?.matches, competition],
+  );
   const member =
     data?.members.find((m) => m.name === selection.player) ??
     (isDemo ? data?.members[0] : undefined);
+  const analysisMatches = useMemo(() => {
+    const window =
+      analysisWindow === "all"
+        ? matches
+        : matches.slice(0, Number(analysisWindow));
+    return window.filter((match) => {
+      const player = matchPlayer(match, member?.name ?? "");
+      return (
+        (!excludeDnf || !(match.dnf || match.awardedByDnf)) &&
+        (analysisRole === "all" ||
+          (player && (player.role ?? "unknown") === analysisRole))
+      );
+    });
+  }, [matches, analysisWindow, analysisRole, excludeDnf, member?.name]);
   const focus = member && data ? insights(member, data.members)[0] : undefined;
   function selectClub(club: Club) {
     saveSelection({ club, player: "" });
     setSearching(false);
     setTab("Overview");
+    setReport(null);
+    setVisibleMatches(20);
   }
 
   return (
@@ -216,6 +310,42 @@ export function Dashboard() {
             </button>
           ))}
         </nav>
+        {
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+            <label className="flex items-center gap-3 text-sm text-muted">
+              Match competition
+              <select
+                aria-label="Match competition"
+                value={competition}
+                onChange={(e) => {
+                  setCompetition(e.target.value as MatchType);
+                  setVisibleMatches(20);
+                  setReport(null);
+                }}
+              >
+                <option value="leagueMatch">League</option>
+                <option value="friendlyMatch">Friendlies</option>
+                <option value="playoffMatch">Playoffs</option>
+              </select>
+            </label>
+            <p className="text-xs text-muted">
+              {isDemo
+                ? "Illustrative match history"
+                : historyQuery.isFetching
+                  ? "Loading collected history…"
+                  : !history
+                    ? "Waiting for collection status…"
+                    : history?.status === "ready"
+                      ? `${matches.length} available matches · history collection enabled`
+                      : history?.status === "error"
+                        ? "History unavailable · showing available results"
+                        : "Recent results · persistence not configured"}
+              {tab === "Compare" || tab === "Improve"
+                ? " · Player totals are season-wide"
+                : ""}
+            </p>
+          </div>
+        }
         {!isDemo && query.error && (
           <div
             role="alert"
@@ -401,7 +531,12 @@ export function Dashboard() {
                       View all <ArrowRight size={16} />
                     </button>
                   </div>
-                  <Matches data={data} member={member} limit={5} />
+                  <Matches
+                    data={data}
+                    member={member}
+                    limit={5}
+                    onSelect={setReport}
+                  />
                 </section>
                 <button
                   onClick={() => setTab("Compare")}
@@ -425,14 +560,31 @@ export function Dashboard() {
               <section className="panel">
                 <div className="p-6">
                   <h2 className="text-xl font-semibold">
-                    Recent league matches
+                    {competitions.find((c) => c.value === competition)?.label}{" "}
+                    matches
                   </h2>
                   <p className="mt-2 text-sm text-muted">
-                    Club results with your individual performance. Not a
-                    complete match history.
+                    Open a match for both lineups and detailed player stats.
+                    Showing recent and collected results, not a complete
+                    archive.
                   </p>
                 </div>
-                <Matches data={data} member={member} />
+                <Matches
+                  data={{ ...data, matches }}
+                  member={member}
+                  limit={visibleMatches}
+                  onSelect={setReport}
+                />
+                {matches.length > visibleMatches && (
+                  <div className="p-4">
+                    <button
+                      className="btn-secondary"
+                      onClick={() => setVisibleMatches((n) => n + 20)}
+                    >
+                      Show 20 more matches
+                    </button>
+                  </div>
+                )}
                 <p className="border-t border-line p-5 text-sm text-muted">
                   Player stats are linked by unique gamertag. — means
                   unavailable or not matched.
@@ -447,6 +599,71 @@ export function Dashboard() {
               />
             )}
             {tab === "Improve" && <Development data={data} member={member} />}
+            {tab === "Analytics" && (
+              <>
+                <div className="mb-5 flex flex-wrap items-end gap-4">
+                  <label className="flex flex-col gap-2 text-sm text-muted">
+                    Analysis window
+                    <select
+                      aria-label="Analysis window"
+                      value={analysisWindow}
+                      onChange={(e) => setAnalysisWindow(e.target.value)}
+                    >
+                      <option value="all">
+                        All loaded matches (up to 200)
+                      </option>
+                      <option value="20">Latest 20 club matches</option>
+                      <option value="10">Latest 10 club matches</option>
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-2 text-sm text-muted">
+                    Played position
+                    <select
+                      aria-label="Played position"
+                      value={analysisRole}
+                      onChange={(e) => setAnalysisRole(e.target.value)}
+                    >
+                      {[
+                        "all",
+                        "forward",
+                        "midfielder",
+                        "defender",
+                        "goalkeeper",
+                        "unknown",
+                      ].map((role) => (
+                        <option key={role} value={role}>
+                          {role === "all" ? "All positions" : role}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="flex min-h-11 items-center gap-2 text-sm text-muted">
+                    <input
+                      className="h-4 w-4 accent-accent"
+                      type="checkbox"
+                      checked={excludeDnf}
+                      onChange={(e) => setExcludeDnf(e.target.checked)}
+                    />
+                    Exclude recorded forfeits
+                  </label>
+                </div>
+                <p className="mb-5 text-xs text-muted">
+                  {analysisMatches.length} club matches after filters · only
+                  your matched appearances are analyzed ·{" "}
+                  {excludeDnf
+                    ? "Known DNF results excluded"
+                    : "DNF results included"}
+                </p>
+                <AnalyticsDashboard
+                  matches={analysisMatches}
+                  member={member}
+                  history={history}
+                  overall={data.overall}
+                  careerMembers={data.careerMembers}
+                  demo={isDemo}
+                />
+              </>
+            )}
           </>
         )}
         <footer className="mt-10 flex flex-col justify-between gap-3 border-t border-line pt-6 text-xs text-muted sm:flex-row">
@@ -460,6 +677,13 @@ export function Dashboard() {
       </main>
       {searching && (
         <ClubSearch onClose={() => setSearching(false)} onSelect={selectClub} />
+      )}
+      {report && member && (
+        <MatchReport
+          match={report}
+          member={member}
+          onClose={() => setReport(null)}
+        />
       )}
     </div>
   );

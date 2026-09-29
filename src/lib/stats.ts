@@ -17,6 +17,47 @@ export type Member = {
   motm: number | null;
 };
 export type Club = { id: string; name: string };
+export type Competition = "leagueMatch" | "friendlyMatch" | "playoffMatch";
+export type MatchPlayer = {
+  id: string;
+  name: string;
+  rating: number | null;
+  goals: number | null;
+  assists: number | null;
+  role?: Role | null;
+  shots?: number | null;
+  passAttempts?: number | null;
+  passesMade?: number | null;
+  tackleAttempts?: number | null;
+  tacklesMade?: number | null;
+  saves?: number | null;
+  goalsConceded?: number | null;
+  cleanSheets?: number | null;
+  redCards?: number | null;
+  motm?: number | null;
+  secondsPlayed?: number | null;
+};
+export type ClubOverall = {
+  games: number | null;
+  wins: number | null;
+  draws: number | null;
+  losses: number | null;
+  goals: number | null;
+  conceded: number | null;
+  skillRating: number | null;
+  winStreak: number | null;
+  unbeatenStreak: number | null;
+  bestDivision: number | null;
+  promotions: number | null;
+  relegations: number | null;
+  gamesPlayedPlayoff: number | null;
+  reputationTier: number | null;
+  leagueAppearances: number | null;
+};
+export type CareerMember = Pick<
+  Member,
+  "name" | "role" | "games" | "goals" | "assists" | "rating" | "motm"
+>;
 export type Match = {
   id: string;
   timestamp: number;
@@ -25,13 +66,11 @@ export type Match = {
   conceded: number | null;
   outcome?: "W" | "D" | "L";
   awardedByDnf?: boolean;
-  players: {
-    id: string;
-    name: string;
-    rating: number | null;
-    goals: number | null;
-    assists: number | null;
-  }[];
+  dnf?: boolean;
+  competition?: Competition;
+  opponentId?: string | null;
+  players: MatchPlayer[];
+  opponentPlayers?: MatchPlayer[];
 };
 export type ClubData = {
   club: Club;
@@ -39,6 +78,8 @@ export type ClubData = {
   matches: Match[];
   updatedAt: string;
   warning?: string;
+  overall?: ClubOverall | null;
+  careerMembers?: CareerMember[];
 };
 
 const record = z.record(z.string(), z.unknown());
@@ -56,6 +97,7 @@ function text(value: unknown, fallback = "") {
   return typeof value === "string" ? value : fallback;
 }
 export function normalizeMembers(raw: unknown): Member[] {
+  if (raw == null || (Array.isArray(raw) && raw.length === 0)) return [];
   const data = z.object({ members: z.array(record) }).parse(raw);
   return data.members
     .filter((m) => typeof m.name === "string" && m.name)
@@ -97,7 +139,94 @@ export function normalizeClubs(raw: unknown): Club[] {
       name: c.clubInfo?.name ?? c.clubName ?? `Club ${c.clubId}`,
     }));
 }
-export function normalizeMatches(raw: unknown, clubId: string): Match[] {
+function role(value: unknown): Role {
+  return ["forward", "midfielder", "defender", "goalkeeper"].includes(
+    text(value),
+  )
+    ? (value as Role)
+    : "unknown";
+}
+
+// Raw EA fields: 1erkandogan/fc27-clubs-api/docs/endpoints.md.
+// Keep secondsPlayed verbatim: gameTime/realtimegame are not interchangeable.
+function normalizePlayers(
+  players: Record<string, Record<string, unknown>> = {},
+): MatchPlayer[] {
+  return Object.entries(players).map(([id, p]) => {
+    const position = role(p.pos);
+    return {
+      id,
+      name: text(p.playername),
+      role: position,
+      rating: number(p.rating),
+      goals: number(p.goals),
+      assists: number(p.assists),
+      shots: number(p.shots),
+      passAttempts: number(p.passattempts),
+      passesMade: number(p.passesmade),
+      tackleAttempts: number(p.tackleattempts),
+      tacklesMade: number(p.tacklesmade),
+      saves: number(p.saves),
+      goalsConceded: number(p.goalsconceded),
+      cleanSheets: number(
+        position === "goalkeeper"
+          ? p.cleansheetsgk
+          : position === "defender"
+            ? p.cleansheetsdef
+            : p.cleansheetsany,
+      ),
+      redCards: number(p.redcards),
+      motm: number(p.man_of_the_match) ?? number(p.mom),
+      secondsPlayed: number(p.secondsPlayed),
+    };
+  });
+}
+
+export function normalizeOverall(raw: unknown): ClubOverall | null {
+  const parsed = record.safeParse(Array.isArray(raw) ? raw[0] : raw);
+  if (!parsed.success || !Object.keys(parsed.data).length) return null;
+  const p = parsed.data;
+  return {
+    games: number(p.gamesPlayed),
+    wins: number(p.wins),
+    draws: number(p.ties),
+    losses: number(p.losses),
+    goals: number(p.goals),
+    conceded: number(p.goalsAgainst),
+    skillRating: number(p.skillRating),
+    winStreak: number(p.wstreak),
+    unbeatenStreak: number(p.unbeatenstreak),
+    bestDivision: number(p.bestDivision),
+    promotions: number(p.promotions),
+    relegations: number(p.relegations),
+    gamesPlayedPlayoff: number(p.gamesPlayedPlayoff),
+    reputationTier: number(p.reputationtier),
+    leagueAppearances: number(p.leagueAppearances),
+  };
+}
+
+export function normalizeCareer(raw: unknown): CareerMember[] {
+  if (raw == null || (Array.isArray(raw) && raw.length === 0)) return [];
+  return z
+    .object({ members: z.array(record) })
+    .parse(raw)
+    .members.filter((p) => typeof p.name === "string" && p.name)
+    .map((p) => ({
+      name: text(p.name),
+      role: role(p.favoritePosition),
+      games: number(p.gamesPlayed),
+      goals: number(p.goals),
+      assists: number(p.assists),
+      rating: number(p.ratingAve),
+      motm: number(p.manOfTheMatch),
+    }));
+}
+
+export function normalizeMatches(
+  raw: unknown,
+  clubId: string,
+  competition: Competition = "leagueMatch",
+): Match[] {
   const matches = z
     .array(
       z.object({
@@ -112,12 +241,15 @@ export function normalizeMatches(raw: unknown, clubId: string): Match[] {
     .flatMap((m) => {
       const own = m.clubs[clubId];
       if (!own) return [];
-      const opponent = Object.entries(m.clubs).find(
+      const opponentEntry = Object.entries(m.clubs).find(
         ([id]) => id !== clubId,
-      )?.[1];
+      );
+      const opponent = opponentEntry?.[1];
       const details = record.safeParse(opponent?.details);
       return {
         id: String(m.matchId),
+        competition,
+        opponentId: opponentEntry?.[0] ?? null,
         timestamp: m.timestamp * 1000,
         opponent: details.success
           ? text(details.data.name, "Unknown club")
@@ -133,13 +265,14 @@ export function normalizeMatches(raw: unknown, clubId: string): Match[] {
                 ? ("D" as const)
                 : undefined,
         awardedByDnf: number(own.winnerByDnf) === 1,
-        players: Object.entries(m.players?.[clubId] ?? {}).map(([id, p]) => ({
-          id,
-          name: text(p.playername),
-          rating: number(p.rating),
-          goals: number(p.goals),
-          assists: number(p.assists),
-        })),
+        dnf:
+          number(own.winnerByDnf) === 1 ||
+          number(opponent?.winnerByDnf) === 1 ||
+          [10, 16385].includes(number(own.result) ?? -1),
+        players: normalizePlayers(m.players?.[clubId]),
+        opponentPlayers: normalizePlayers(
+          opponentEntry ? m.players?.[opponentEntry[0]] : undefined,
+        ),
       };
     })
     .sort((a, b) => b.timestamp - a.timestamp);

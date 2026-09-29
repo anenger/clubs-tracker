@@ -4,8 +4,17 @@ import {
   normalizeClubs,
   normalizeMatches,
   normalizeMembers,
+  normalizeOverall,
+  normalizeCareer,
   type ClubData,
 } from "./stats";
+import type { MatchType } from "./history-types";
+import {
+  clubIdSchema,
+  competitionSchema,
+  persistObservations,
+  type Observation,
+} from "./persistence";
 
 const BASE = "https://proclubs.ea.com/api/fc/";
 type CachedResponse = { data: unknown; fetchedAt: number; expires: number };
@@ -24,8 +33,11 @@ async function ea(
   if (existing) return existing;
   if (pending.size >= 20)
     throw new ApiError("Live data is busy. Please try again shortly.");
+  const queuedAt = Date.now();
   const task = queue.then(async () => {
     try {
+      if (Date.now() - queuedAt > 60_000)
+        throw new ApiError("Live data is busy. Please try again shortly.");
       const response = await fetch(url, {
         headers: {
           Accept: "application/json",
@@ -70,16 +82,91 @@ export async function searchClubs(name: string) {
     (await ea("allTimeLeaderboard/search", { clubName: name })).data,
   );
 }
-export async function getClub(id: string): Promise<ClubData> {
-  const [info, members, matches] = await Promise.allSettled([
+async function collectClub(id: string, competition: MatchType) {
+  clubIdSchema.parse(id);
+  competitionSchema.parse(competition);
+  const endpoints = [
+    "clubs/info",
+    "members/stats",
+    "clubs/matches",
+    "clubs/overallStats",
+    "members/career/stats",
+  ];
+  const responses = await Promise.allSettled([
     ea("clubs/info", { clubIds: id }),
     ea("members/stats", { clubId: id }),
     ea("clubs/matches", {
       clubIds: id,
-      matchType: "leagueMatch",
+      matchType: competition,
       maxResultCount: "10",
     }),
+    ea("clubs/overallStats", { clubIds: id }),
+    ea("members/career/stats", { clubId: id }),
   ]);
+  const observations: Observation[] = endpoints.flatMap((endpoint, index) => {
+    const response = responses[index];
+    return response?.status === "fulfilled"
+      ? [{ endpoint, ...response.value }]
+      : [];
+  });
+  const complete =
+    responses.every((r) => r.status === "fulfilled") &&
+    observations.every((observation) => {
+      try {
+        switch (observation.endpoint) {
+          case "members/stats":
+            normalizeMembers(observation.data);
+            return true;
+          case "members/career/stats":
+            if (observation.data == null) return false;
+            normalizeCareer(observation.data);
+            return true;
+          case "clubs/overallStats":
+            return normalizeOverall(observation.data) !== null;
+          case "clubs/info": {
+            const info = observation.data;
+            if (!info || typeof info !== "object" || !(id in info))
+              return false;
+            const club = (info as Record<string, unknown>)[id];
+            return Boolean(
+              club &&
+              typeof club === "object" &&
+              "name" in club &&
+              typeof club.name === "string",
+            );
+          }
+          default:
+            return true; // Match payloads are validated by persistence before ingestion.
+        }
+      } catch {
+        return false;
+      }
+    });
+  const persistence = await persistObservations(
+    id,
+    competition,
+    observations,
+    complete,
+  );
+  return { responses, persistence };
+}
+
+export async function syncClub(
+  id: string,
+  competition: MatchType = "leagueMatch",
+) {
+  const { persistence } = await collectClub(id, competition);
+  return persistence;
+}
+
+export async function getClub(
+  id: string,
+  competition: MatchType = "leagueMatch",
+): Promise<ClubData> {
+  const {
+    responses: [info, members, matches, overall, career],
+    persistence,
+  } = await collectClub(id, competition);
   if (members.status === "rejected") throw members.reason;
   const clubInfo =
     info.status === "fulfilled" &&
@@ -91,11 +178,31 @@ export async function getClub(id: string): Promise<ClubData> {
   let warning: string | undefined;
   try {
     if (matches.status === "rejected") throw matches.reason;
-    normalizedMatches = normalizeMatches(matches.value.data, id);
+    normalizedMatches = normalizeMatches(
+      matches.value.data,
+      id,
+      competition,
+    ).slice(0, 200);
   } catch {
     warning =
       "Recent matches are unavailable. Your member stats are still available.";
   }
+  let normalizedOverall: ReturnType<typeof normalizeOverall> = null;
+  let careerMembers: ReturnType<typeof normalizeCareer> = [];
+  try {
+    if (overall.status === "fulfilled")
+      normalizedOverall = normalizeOverall(overall.value.data);
+  } catch {
+    /* Optional endpoint. */
+  }
+  try {
+    if (career.status === "fulfilled")
+      careerMembers = normalizeCareer(career.value.data);
+  } catch {
+    /* Optional endpoint. */
+  }
+  if (persistence.warning)
+    warning = [warning, persistence.warning].filter(Boolean).join(" ");
   return {
     club: {
       id,
@@ -103,6 +210,8 @@ export async function getClub(id: string): Promise<ClubData> {
     },
     members: normalizeMembers(members.value.data),
     matches: normalizedMatches,
+    overall: normalizedOverall,
+    careerMembers,
     updatedAt: new Date(
       Math.min(
         members.value.fetchedAt,

@@ -4,16 +4,19 @@ import {
   matchResult,
   type ClubData,
   type Member,
+  type Match,
 } from "@/lib/stats";
 
 export function Matches({
   data,
   member,
   limit,
+  onSelect,
 }: {
   data: ClubData;
   member: Member;
   limit?: number;
+  onSelect?: (match: Match) => void;
 }) {
   const matches = limit ? data.matches.slice(0, limit) : data.matches;
   return (
@@ -32,6 +35,11 @@ export function Matches({
             <th>Goals</th>
             <th>Assists</th>
             <th className="text-right">Rating</th>
+            {onSelect && (
+              <th>
+                <span className="sr-only">Match report</span>
+              </th>
+            )}
           </tr>
         </thead>
         <tbody>
@@ -72,13 +80,26 @@ export function Matches({
                     {format(player?.rating ?? null)}
                   </span>
                 </td>
+                {onSelect && (
+                  <td className="text-right">
+                    <button
+                      className="min-h-10 rounded px-2 text-sm text-accent hover:bg-raised"
+                      onClick={() => onSelect(match)}
+                      aria-label={`View match report against ${match.opponent}`}
+                    >
+                      Report →
+                    </button>
+                  </td>
+                )}
               </tr>
             );
           })}
         </tbody>
       </table>
       {!matches.length && (
-        <p className="p-8 text-muted">No recent league matches available.</p>
+        <p className="p-8 text-muted">
+          No matches available for this competition.
+        </p>
       )}
     </div>
   );
@@ -159,7 +180,7 @@ export function RatingChart({
         </text>
       </svg>
       <p className="mt-3 text-sm text-muted">
-        {valid.length} matched appearances · League matches only
+        {valid.length} matched appearances · Selected competition
       </p>
     </>
   ) : (
