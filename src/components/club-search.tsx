@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, LoaderCircle, Search, Shield, X } from "lucide-react";
 import { demo } from "@/lib/demo";
-import { request } from "@/lib/client-api";
+import { searchClubs } from "@/lib/client-api";
 import type { Club } from "@/lib/stats";
 
 export function ClubSearch({
@@ -26,8 +26,7 @@ export function ClubSearch({
   }, [term]);
   const query = useQuery({
     queryKey: ["club-search", debounced],
-    queryFn: ({ signal }) =>
-      request<Club[]>(`/api/clubs?q=${encodeURIComponent(debounced)}`, signal),
+    queryFn: ({ signal }) => searchClubs(debounced, signal),
     enabled: debounced.length >= 2,
   });
   return (

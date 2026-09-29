@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 
-test("Postgres history schema: idempotent ingestion, atomic writes, role boundaries and scheduler leases", async (t) => {
+test("Postgres history schema: idempotent ingestion, public reads, private writes and scheduler leases", async (t) => {
   const db = new PGlite();
   try {
     await db.exec(
@@ -13,6 +13,24 @@ test("Postgres history schema: idempotent ingestion, atomic writes, role boundar
       await readFile(
         new URL(
           "../../supabase/migrations/20260928000100_club_history.sql",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    );
+    await db.exec(
+      await readFile(
+        new URL(
+          "../../supabase/migrations/20260929015351_public_history_reads.sql",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    );
+    await db.exec(
+      await readFile(
+        new URL(
+          "../../supabase/migrations/20260929020247_club_refresh_leases.sql",
           import.meta.url,
         ),
         "utf8",
@@ -158,7 +176,7 @@ test("Postgres history schema: idempotent ingestion, atomic writes, role boundar
     );
 
     await t.test(
-      "public roles cannot read or invoke ingestion; all tables have RLS",
+      "public roles read bounded history columns but cannot inspect snapshots or write",
       async () => {
         await db.exec("reset role");
         const rls = await db.query<{ relrowsecurity: boolean }>(
@@ -168,14 +186,56 @@ test("Postgres history schema: idempotent ingestion, atomic writes, role boundar
         assert.ok(rls.rows.every((r) => r.relrowsecurity));
         for (const role of ["anon", "authenticated"]) {
           await db.exec(`set role ${role}`);
+          assert.equal(
+            (
+              await db.query(
+                "select club_id,competition,tracking_started_at,last_synced_at,sync_status from public.tracked_clubs",
+              )
+            ).rows.length,
+            2,
+          );
+          assert.equal(
+            (
+              await db.query(
+                "select match_id,match_timestamp,payload from public.club_matches",
+              )
+            ).rows.length,
+            2,
+          );
           await assert.rejects(db.query("select * from public.club_matches"));
+          await assert.rejects(db.query("select * from public.club_snapshots"));
           await assert.rejects(
             db.query("select public.claim_tracked_clubs(2)"),
+          );
+          await assert.rejects(
+            db.query("select public.claim_club_refresh('42','leagueMatch')"),
           );
           await assert.rejects(ingest());
           await db.exec("reset role");
         }
         await db.exec("set role service_role");
+      },
+    );
+
+    await t.test(
+      "refresh leases allow one live refresh per club and competition per window",
+      async () => {
+        const claim = async (club: string, competition = "leagueMatch") =>
+          (
+            await db.query<{ claimed: boolean }>(
+              "select public.claim_club_refresh($1,$2) as claimed",
+              [club, competition],
+            )
+          ).rows[0]?.claimed;
+        assert.equal(await claim("77"), true);
+        assert.equal(await claim("77"), false);
+        assert.equal(await claim("77", "friendlyMatch"), true);
+        assert.equal(await claim("78"), true);
+        await db.exec(
+          "update club_refresh_leases set refreshed_at=now()-interval '6 minutes' where club_id='77'",
+        );
+        assert.equal(await claim("77"), true);
+        await assert.rejects(claim("not-a-club"));
       },
     );
 

@@ -14,14 +14,13 @@ import {
   Users,
 } from "lucide-react";
 import { demo } from "@/lib/demo";
-import { request } from "@/lib/client-api";
+import { getClub, getHistory } from "@/lib/client-api";
 import {
   format,
   insights,
   matchPlayer,
   perGame,
   type Club,
-  type ClubData,
   type Match,
 } from "@/lib/stats";
 import { useSelection } from "./use-selection";
@@ -63,10 +62,7 @@ export function Dashboard() {
   const query = useQuery({
     queryKey: ["club", "common-gen5", selection.club.id, competition],
     queryFn: async ({ signal }) => {
-      const result = await request<ClubData>(
-        `/api/clubs?id=${selection.club.id}&competition=${competition}`,
-        signal,
-      );
+      const result = await getClub(selection.club.id, competition, signal);
       void queryClient.invalidateQueries({
         queryKey: ["club-history", selection.club.id, competition],
       });
@@ -90,10 +86,7 @@ export function Dashboard() {
   const historyQuery = useQuery({
     queryKey: ["club-history", selection.club.id, competition],
     queryFn: async ({ signal }) => {
-      const result = await request<HistoryData>(
-        `/api/clubs/history?id=${selection.club.id}&competition=${competition}&limit=200`,
-        signal,
-      );
+      const result = await getHistory(selection.club.id, competition, signal);
       if (result.status === "error")
         throw new Error(result.warning || "Collected history is unavailable.");
       return result;

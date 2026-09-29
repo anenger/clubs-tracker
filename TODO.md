@@ -2,13 +2,13 @@
 
 ## Architecture
 
-Supabase Postgres stores source observations and collected matches. Next.js owns EA ingestion and privileged database access. React Query loads bounded datasets; pure TypeScript functions calculate analytics in the browser. A future backend can reuse the ingestion/storage boundary without changing the analytics UI.
+Supabase Postgres stores source observations and collected matches. A publishable-key Supabase Edge Function owns validated EA ingestion and privileged writes. The statically exported Next.js app uses React Query to load live data and public bounded history; pure TypeScript functions calculate analytics in the browser.
 
 ## Tasks
 
 - [x] Expand and validate EA match, goalkeeper, season, career, and club data.
-- [x] Add Supabase migrations, server-only repository, idempotent collection, and a bounded history API.
-- [x] Add optional scheduled collection of tracked clubs, with explicit collection/freshness status.
+- [x] Add Supabase migrations, idempotent collection, and public bounded history reads.
+- [x] Move live EA requests to a validated Supabase Edge Function and make Vercel a static deployment.
 - [x] Implement weighted accuracy, finishing/defending/keeper summaries, position splits, rolling comparisons, sessions, and lineup associations.
 - [x] Build a deep analytics view, competition filters, full match reports, and history-aware loading/empty states.
 - [x] Expand illustrative demo data and cover statistical edge cases with meaningful tests.
@@ -16,7 +16,7 @@ Supabase Postgres stores source observations and collected matches. Next.js owns
 - [x] Verify lint, TypeScript, formatting, tests, production build, and browser flows.
 - [x] Connect a Supabase project and run migrations; verify live ingestion, history read-back, duplicate handling, and private table access.
 
-Scheduled background collection still requires a deployed server, `CRON_SECRET`, and an external scheduler; viewing a live club already collects its selected competition.
+Background collection is intentionally not configured; viewing a live club collects its selected competition.
 
 ## Interpretation rules
 

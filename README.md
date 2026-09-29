@@ -27,34 +27,33 @@ pnpm start
 - Club/player selection remembered locally, without sign-in.
 - Responsive layouts, keyboard-accessible club search, empty/error states, and a sample squad.
 - Browser-calculated analytics for shooting, passing, tackling, goalkeeping, role splits, form, sessions, and lineup associations.
-- Optional Supabase collection of raw responses and matches, with separate league, friendly, and playoff histories.
+- Supabase collection of raw responses and matches, with separate league, friendly, and playoff histories.
 
-## Optional Supabase persistence
+## Supabase data access
 
-The application works without a database. To collect history, configure `SUPABASE_URL` and `SUPABASE_SECRET_KEY` in `.env.local` and apply the supplied migration. See [Supabase setup](docs/supabase-setup.md) for schema installation, scheduled collection, and verification.
+The labelled demo works without configuration. Live club search, refresh, and history require `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`; both are intentionally public browser credentials. See [Supabase setup](docs/supabase-setup.md) for migrations, Edge Function deployment, and verification.
 
-Database credentials stay in Next.js server code. The browser receives bounded match datasets through API routes and calculates analytics locally. There is no Supabase browser secret or direct browser write path. A dedicated backend can later take over ingestion and scheduling without changing the pure analytics functions.
+Club and match statistics are public EA data. The browser reads a bounded history window directly through Supabase's Data API under RLS and column grants. Raw snapshots, table writes, and ingestion RPCs remain private. The `clubs-api` Edge Function accepts the publishable key, validates fixed query shapes, calls fixed EA endpoints, and performs privileged ingestion internally; no secret key reaches the browser or Vercel.
 
-Collection while viewing a club is on demand, refreshed approximately every five minutes. Collecting while nobody is using the app requires configuring the documented scheduled sync endpoint. “Real time” here means recalculating on fresh match data, not live in-game telemetry.
+Collection is on demand when a club is viewed and React Query refreshes approximately every five minutes. There is currently no background schedule. “Real time” means recalculating on freshly requested match data, not live in-game telemetry.
 
 ## Deploy to Vercel
 
 1. Import the GitHub repository into Vercel or run `pnpm dlx vercel link`.
-2. Add `SUPABASE_URL` and the sensitive `SUPABASE_SECRET_KEY` to the Production environment. Leave `CRON_SECRET` unset for on-demand-only collection.
+2. Add `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` to the Production environment. These identify the public project API and are not secrets.
 3. Deploy from `main` or run `pnpm dlx vercel --prod`.
-4. Verify the homepage, a live club lookup, and its history endpoint. Never expose the Supabase secret through a `NEXT_PUBLIC_` variable.
+4. Verify the homepage, a live club lookup, and collected history. Never add a Supabase secret key to Vercel or a `NEXT_PUBLIC_` variable.
 
-Vercel automatically deploys changes pushed to the connected production branch. GitHub Actions independently runs linting, strict TypeScript checks, formatting, tests, and a production build for pushes and pull requests. The public API remains intentionally bounded but depends on EA's unofficial upstream service; monitor Vercel usage and upstream failures before promoting the app widely.
+The Next.js build is a static export, so Vercel serves files without application functions. Vercel automatically deploys changes pushed to the connected production branch. GitHub Actions independently runs linting, strict TypeScript checks, formatting, tests, and a production build for pushes and pull requests. The Edge Function remains dependent on EA's unofficial upstream service; monitor Supabase usage and upstream failures before promoting the app widely.
 
 ## Architecture
 
-- **Next.js App Router + TypeScript** for the application and server API.
+- **Next.js App Router + TypeScript** for a static application shell.
 - **Tailwind CSS v4** with the dedicated PostCSS plugin, CSS-first theme tokens, and utility-based responsive styling.
 - **TanStack React Query** for five-minute client caching, deduplication, cancellation of client requests, and explicit refresh.
-- `src/lib/ea.ts`: server-only adapter for the [fc27-clubs-api reference](https://github.com/1erkandogan/fc27-clubs-api). Reimplements HTTP requests in TypeScript; no Python runtime needed.
-- `src/lib/persistence.ts`: optional Supabase repository for raw observations, collected matches, and tracking metadata.
+- `supabase/functions/clubs-api`: publishable-key Edge Function for fixed, validated EA requests and privileged persistence.
+- `src/lib/client-api.ts`: browser adapter for the Edge Function and public, bounded Supabase history reads.
 - `src/lib/analytics.ts`: pure client-compatible calculations; no React, database, or HTTP dependencies.
-- `src/app/api/clubs/route.ts`: validated club search/detail endpoint. Uses only fixed EA endpoints on `common-gen5` (PS5, Xbox Series, PC).
 - `src/lib/stats.ts`: validated response normalization, nullable metrics, role-aware comparisons, and conservative gamertag association.
 - `src/lib/demo.ts`: illustrative data, never substituted silently for live results.
 - `src/components/dashboard.tsx`: player overview and navigation. Search, comparisons, matches, and development have focused components alongside it.
@@ -68,11 +67,11 @@ Vercel automatically deploys changes pushed to the connected production branch. 
 - `pnpm check`: lint, types, formatting, and unit tests. Production compilation is separate (`pnpm build`).
 - `pnpm-workspace.yaml` explicitly allows only the installed build-script dependencies that require approval.
 
-The server keeps a bounded five-minute in-memory response cache, deduplicates requests, spaces upstream calls by one second, limits the pending queue, and applies twelve-second upstream timeouts. CDN responses may serve stale data while revalidating. Refresh respects those server caches. These protections are **per server instance**, not a distributed quota; scale-out deployments would need a shared cache/rate limiter.
+React Query caches requests for five minutes in each browser. The Edge Function accepts only club search, numeric club IDs, and the three known competition values; it spaces a club refresh's five fixed EA calls by 750 milliseconds and applies twelve-second upstream timeouts. This is not a distributed rate limiter, so add database-backed throttling before driving substantial public traffic.
 
 ## Data interpretation and limits
 
-- EA's public API is unofficial. Browser-style server requests were verified locally against real search/member/match responses; access can differ on deployment hosts or fail intermittently. Failures are shown explicitly, and existing client-cached stats remain visible when refresh fails.
+- EA's public API is unofficial. Direct browser requests fail CORS and Vercel egress receives EA `403` responses, so live requests run through Supabase Edge. Failures are shown explicitly, and existing client-cached stats remain visible when refresh fails.
 - The actual upstream path is `/api/fc`; there is no verified edition selector, despite the reference repository's FC27 name.
 - No global player search or account-ownership verification is available. Select a club first, then a member.
 - Member responses have gamertags but no player IDs. Recent-match association requires a unique case-insensitive gamertag match; it is provisional and can break after renames. Match player IDs are retained.
@@ -87,6 +86,6 @@ The source-backed [data research](docs/research/clubs-analytics-data.md) documen
 
 ## Verification
 
-Tests cover numerical normalization, timestamp conversion, player-ID retention, ambiguous identity matches, weighted calculations with missing data, rolling windows, sessions, teammate associations, and history merging. The migration also runs against in-memory PostgreSQL (PGlite) to verify idempotent collection, atomic rollback, role permissions, and scheduler leases; no external test database is required. Browser checks cover live discovery, member and match loading, player switching, local persistence, analytics views, full match reports, and mobile layout.
+Tests cover numerical normalization, timestamp conversion, player-ID retention, ambiguous identity matches, weighted calculations with missing data, rolling windows, sessions, teammate associations, and history merging. Migrations also run against in-memory PostgreSQL (PGlite) to verify idempotent collection, atomic rollback, public read boundaries, private writes, and scheduler leases; no external test database is required. Browser checks cover live discovery, member and match loading, player switching, local persistence, analytics views, full match reports, and mobile layout.
 
 The optional repository engineering-skill tracker configuration is not installed. Run `/setup-matt-pocock-skills` if you want tracker-backed specs and formal issue-linked reviews.

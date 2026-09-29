@@ -8,5 +8,11 @@ export default defineConfig([
   ...nextTypescript,
   prettier,
   { rules: { "@typescript-eslint/consistent-type-imports": "error" } },
-  globalIgnores([".next/**", ".next-build/**", "out/**", "next-env.d.ts"]),
+  globalIgnores([
+    ".next/**",
+    ".next-build/**",
+    "out/**",
+    "next-env.d.ts",
+    "supabase/functions/**",
+  ]),
 ]);
