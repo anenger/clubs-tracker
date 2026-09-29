@@ -4,7 +4,6 @@ import { useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import {
-  Activity,
   ArrowRight,
   ChevronRight,
   LoaderCircle,
@@ -28,6 +27,7 @@ import { ClubSearch } from "./club-search";
 import { Comparison } from "./comparison";
 import { Development } from "./development";
 import { Matches, RatingChart } from "./matches";
+import { FootballMark, PitchMark } from "./football-mark";
 
 const tabs = ["Overview", "Matches", "Compare", "Improve"] as const;
 type Tab = (typeof tabs)[number];
@@ -45,7 +45,8 @@ export function Dashboard() {
   });
   const data = isDemo ? demo : query.data;
   const member =
-    data?.members.find((m) => m.name === selection.player) ?? data?.members[0];
+    data?.members.find((m) => m.name === selection.player) ??
+    (isDemo ? data?.members[0] : undefined);
   const focus = member && data ? insights(member, data.members)[0] : undefined;
   function selectClub(club: Club) {
     saveSelection({ club, player: "" });
@@ -62,32 +63,33 @@ export function Dashboard() {
         Skip to content
       </a>
       <header className="border-b border-line bg-surface">
-        <div className="mx-auto flex max-w-[1320px] items-center justify-between gap-4 px-5 py-4 sm:px-8">
+        <div className="mx-auto flex max-w-[1240px] items-center justify-between gap-4 px-4 py-3 sm:px-7">
           <Link
             href="/"
             className="flex items-center gap-2.5 text-xl font-bold tracking-tight"
           >
-            <Activity className="text-accent" size={26} />
+            <FootballMark className="h-7 w-7 text-accent" />
             touchline
             <span className="hidden border-l border-line pl-4 text-sm font-normal tracking-normal text-muted md:inline">
-              Clubs stats
+              Your Clubs match centre
             </span>
           </Link>
           <button className="btn-secondary" onClick={() => setSearching(true)}>
             <Search size={17} />
-            <span>Find a club</span>
+            <span>{isDemo ? "Find my club" : "Change my club"}</span>
           </button>
         </div>
       </header>
-      <main id="main" className="mx-auto max-w-[1320px] px-5 pb-12 sm:px-8">
+      <main id="main" className="mx-auto max-w-[1240px] px-4 pb-10 sm:px-7">
         {isDemo && (
-          <div className="mt-6 flex flex-col justify-between gap-4 rounded-lg border border-accent/25 bg-accent/5 p-4 sm:flex-row sm:items-center">
+          <div className="mt-5 flex flex-col justify-between gap-3 rounded-lg border border-accent/25 bg-accent/5 p-3.5 sm:flex-row sm:items-center">
             <div>
               <strong className="text-sm font-semibold">
-                You’re viewing a demo player
+                Make this your match centre
               </strong>
               <p className="mt-1 text-sm text-muted">
-                Find your club and select your player to see your actual stats.
+                1. Find your club. 2. Choose your username. This is demo data
+                until then.
               </p>
             </div>
             <button
@@ -98,8 +100,9 @@ export function Dashboard() {
             </button>
           </div>
         )}
-        <div className="mt-8 flex items-center gap-2 text-sm text-muted">
+        <div className="mt-5 flex flex-wrap items-center gap-2 text-sm text-muted">
           <Shield size={16} />
+          <span>{isDemo ? "Demo club:" : "Your club:"}</span>
           <button
             className="hover:text-white"
             onClick={() => setSearching(true)}
@@ -107,18 +110,24 @@ export function Dashboard() {
             {selection.club.name}
           </button>
           <ChevronRight size={14} />
-          <span>Player stats</span>
+          <button
+            className="text-accent hover:text-orange-200"
+            onClick={() => setSearching(true)}
+          >
+            {isDemo ? "Choose your club" : "Change club"}
+          </button>
         </div>
-        <section className="flex flex-col justify-between gap-6 py-7 md:flex-row md:items-center">
-          <div className="flex items-center gap-4">
-            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg border border-line bg-raised text-xl font-bold sm:h-20 sm:w-20 sm:text-2xl">
+        <section className="relative flex flex-col justify-between gap-4 py-5 md:flex-row md:items-center">
+          <PitchMark />
+          <div className="relative flex min-w-0 items-center gap-3.5">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-t-xl rounded-b-2xl border border-line bg-raised text-lg font-bold sm:h-16 sm:w-16 sm:text-xl">
               {(member?.proName || member?.name || "?")
                 .slice(0, 2)
                 .toUpperCase()}
             </div>
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
-                {member?.proName || member?.name || selection.club.name}
+            <div className="min-w-0">
+              <h1 className="text-2xl font-bold tracking-tight break-words sm:text-3xl">
+                {member?.proName || member?.name || "Choose your player"}
               </h1>
               <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted">
                 {member && (
@@ -134,28 +143,38 @@ export function Dashboard() {
               </p>
             </div>
           </div>
-          <div className="flex flex-wrap items-end gap-3">
-            {member && data && (
-              <label className="flex flex-col gap-2 text-sm text-muted">
-                Player
+          <div className="relative flex flex-wrap items-end gap-3">
+            {!!data?.members.length && (
+              <label className="flex min-w-0 flex-1 flex-col gap-1.5 text-sm text-muted md:flex-none">
+                {isDemo
+                  ? "Your username · demo squad"
+                  : "Your username / gamertag"}
                 <select
                   id="player"
-                  className="max-w-64 text-zinc-100"
-                  value={member.name}
+                  className={`w-full min-w-0 text-zinc-100 md:max-w-64 ${!member ? "border-accent" : ""}`}
+                  value={member?.name ?? ""}
+                  aria-describedby="username-help"
                   onChange={(e) =>
                     saveSelection({ ...selection, player: e.target.value })
                   }
                 >
+                  <option value="" disabled>
+                    Select your username…
+                  </option>
                   {data.members.map((m) => (
                     <option key={m.name} value={m.name}>
-                      {m.proName || m.name}
-                      {m.proName ? ` · ${m.name}` : ""}
+                      {m.name}
+                      {m.proName ? ` · ${m.proName}` : ""}
                     </option>
                   ))}
                 </select>
+                <span id="username-help" className="text-xs">
+                  Choose yourself from{" "}
+                  {isDemo ? "the demo squad" : "your club’s squad"}.
+                </span>
               </label>
             )}
-            <div className="pb-2 text-right text-sm text-muted">
+            <div className="pb-2 text-sm text-muted md:text-right">
               <span className="block">Current season</span>
               {!isDemo && (
                 <span className="mt-1 block text-xs">
@@ -184,14 +203,14 @@ export function Dashboard() {
         </section>
         <nav
           aria-label="Player stats"
-          className="mb-7 flex gap-6 overflow-x-auto border-b border-line sm:gap-9"
+          className="mb-5 flex gap-6 overflow-x-auto border-b border-line sm:gap-8"
         >
           {tabs.map((item) => (
             <button
               key={item}
               aria-current={tab === item ? "page" : undefined}
               onClick={() => setTab(item)}
-              className={`shrink-0 border-b-2 px-1 pt-2 pb-4 text-base font-medium ${tab === item ? "border-accent text-white" : "border-transparent text-muted hover:text-white"}`}
+              className={`min-h-11 shrink-0 border-b-2 px-1 pt-2 pb-3 text-sm font-medium ${tab === item ? "border-accent text-white" : "border-transparent text-muted hover:text-white"}`}
             >
               {item}
             </button>
@@ -233,8 +252,25 @@ export function Dashboard() {
             <p>Loading members and recent matches from EA…</p>
           </div>
         )}
-        {data && !member && (
-          <div className="panel p-10">
+        {data && !member && data.members.length > 0 && (
+          <div className="panel border-accent/30 p-6">
+            <h2 className="text-xl font-semibold">
+              Club found. Which player are you?
+            </h2>
+            <p className="mt-2 text-sm text-muted">
+              Select your own username above to open your personal stats. We’ll
+              remember your choice on this device.
+            </p>
+            <button
+              className="btn-primary mt-4"
+              onClick={() => document.getElementById("player")?.focus()}
+            >
+              Choose my username <ArrowRight size={16} />
+            </button>
+          </div>
+        )}
+        {data && !data.members.length && (
+          <div className="panel p-6">
             <h2 className="text-xl font-semibold">No member stats available</h2>
             <button
               onClick={() => setSearching(true)}
@@ -247,9 +283,9 @@ export function Dashboard() {
         {data && member && (
           <>
             {tab === "Overview" && (
-              <div className="space-y-6">
+              <div className="space-y-5">
                 <div className="flex items-baseline justify-between">
-                  <h2 className="text-xl font-semibold">Season overview</h2>
+                  <h2 className="text-lg font-semibold">Season overview</h2>
                   <span className="text-sm text-muted">
                     {format(member.games, 0)} matches played
                   </span>
@@ -278,19 +314,19 @@ export function Dashboard() {
                       detail: "This season",
                     },
                   ].map((stat) => (
-                    <section key={stat.label} className="panel p-5 sm:p-6">
+                    <section key={stat.label} className="panel p-4 sm:p-5">
                       <h3 className="text-sm text-muted">{stat.label}</h3>
                       <strong
-                        className={`mt-3 block text-4xl font-semibold tracking-tight tabular-nums sm:text-5xl ${stat.accent ? "text-accent" : ""}`}
+                        className={`mt-2 block text-3xl font-semibold tracking-tight tabular-nums sm:text-4xl ${stat.accent ? "text-accent" : ""}`}
                       >
                         {stat.value}
                       </strong>
-                      <p className="mt-3 text-sm text-muted">{stat.detail}</p>
+                      <p className="mt-2 text-sm text-muted">{stat.detail}</p>
                     </section>
                   ))}
                 </div>
-                <div className="grid gap-6 lg:grid-cols-[1.7fr_1fr]">
-                  <section className="panel p-5 sm:p-6">
+                <div className="grid gap-5 lg:grid-cols-[1.7fr_1fr]">
+                  <section className="panel p-4 sm:p-5">
                     <div className="flex items-center justify-between gap-3">
                       <h2 className="text-lg font-semibold">
                         Recent match ratings
@@ -301,31 +337,31 @@ export function Dashboard() {
                     </div>
                     <RatingChart data={data} member={member} />
                   </section>
-                  <section className="panel flex flex-col border-t-2 border-t-accent p-6">
+                  <section className="panel flex flex-col border-t-2 border-t-accent p-5">
                     <div className="flex items-center gap-2 text-sm font-medium text-accent">
                       <Target size={18} />
                       Your next focus
                     </div>
-                    <h2 className="mt-4 text-2xl font-semibold">
+                    <h2 className="mt-3 text-xl font-semibold">
                       {focus?.label ?? "Build your baseline"}
                     </h2>
                     {focus ? (
                       <>
-                        <p className="mt-3 leading-relaxed text-muted">
+                        <p className="mt-3 text-sm leading-relaxed text-muted">
                           {focus.gap < 0
                             ? "Below your same-position teammates. A useful place to start your next session."
                             : "You’re matching or exceeding your role peers. Review what’s working."}
                         </p>
-                        <div className="my-5 grid grid-cols-2 gap-4">
+                        <div className="my-4 grid grid-cols-2 gap-4">
                           <div>
-                            <strong className="text-3xl font-semibold">
+                            <strong className="text-2xl font-semibold">
                               {format(focus.value, 2)}
                               {focus.unit}
                             </strong>
                             <p className="mt-1 text-sm text-muted">You</p>
                           </div>
                           <div>
-                            <strong className="text-3xl font-semibold text-muted">
+                            <strong className="text-2xl font-semibold text-muted">
                               {format(focus.average, 2)}
                               {focus.unit}
                             </strong>
@@ -356,7 +392,7 @@ export function Dashboard() {
                   </section>
                 </div>
                 <section className="panel">
-                  <div className="flex items-center justify-between gap-3 p-5 sm:p-6">
+                  <div className="flex items-center justify-between gap-3 p-4 sm:p-5">
                     <h2 className="text-lg font-semibold">Recent matches</h2>
                     <button
                       onClick={() => setTab("Matches")}

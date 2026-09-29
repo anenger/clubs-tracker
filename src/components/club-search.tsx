@@ -40,6 +40,9 @@ export function ClubSearch({
       }}
       className="fixed inset-0 m-auto max-h-[85dvh] w-[calc(100%-2rem)] max-w-xl overflow-auto rounded-xl border border-line bg-surface p-6 text-zinc-100 shadow-2xl backdrop:bg-black/75"
     >
+      <p className="mb-3 text-xs font-semibold tracking-wide text-accent uppercase">
+        Step 1 of 2 · Your club
+      </p>
       <div className="flex items-center justify-between">
         <h2 id="search-title" className="text-2xl font-bold">
           Find your club
@@ -53,14 +56,15 @@ export function ClubSearch({
         </button>
       </div>
       <p className="mt-2 text-muted">
-        Search your club name, then select yourself from the squad.
+        Search for the club you play for. Next, choose your own username from
+        its squad.
       </p>
       <label className="mt-6 flex items-center gap-3 rounded-md border border-line bg-page px-4 focus-within:border-accent">
         <Search size={20} className="text-muted" />
         <input
           autoFocus
           aria-label="Club name"
-          placeholder="Enter club name"
+          placeholder="Enter your club’s name"
           maxLength={60}
           value={term}
           onChange={(e) => setTerm(e.target.value)}

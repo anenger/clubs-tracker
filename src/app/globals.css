@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: Arial, Helvetica, sans-serif;
+  --font-sans: "Space Grotesk Variable", Arial, sans-serif;
   --color-page: #141619;
   --color-surface: #1d2025;
   --color-raised: #262a30;
@@ -43,7 +43,7 @@
   }
   th,
   td {
-    @apply px-5 py-4 whitespace-nowrap;
+    @apply px-4 py-3 whitespace-nowrap;
   }
   thead {
     @apply border-b border-line bg-page/40;
