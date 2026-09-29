@@ -19,8 +19,6 @@ pnpm build
 pnpm start
 ```
 
-Production builds use `.next-build` so they do not interfere with a running development server.
-
 ## Features
 
 - Personal season totals, rating chart, and recent league match results.
