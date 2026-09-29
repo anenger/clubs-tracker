@@ -13,21 +13,3 @@ export function FootballMark({ className }: { className?: string }) {
     </svg>
   );
 }
-
-export function PitchMark() {
-  return (
-    <svg
-      viewBox="0 0 280 160"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1"
-      aria-hidden="true"
-      className="pointer-events-none absolute top-1/2 right-0 hidden h-36 -translate-y-1/2 text-white/[.06] lg:block"
-    >
-      <rect x="10" y="10" width="260" height="140" rx="2" />
-      <path d="M140 10v140 M10 40h40v80H10 M270 40h-40v80h40 M10 60h16v40H10 M270 60h-16v40h16" />
-      <circle cx="140" cy="80" r="28" />
-      <circle cx="140" cy="80" r="2" fill="currentColor" />
-    </svg>
-  );
-}

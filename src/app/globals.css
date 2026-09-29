@@ -2,12 +2,15 @@
 
 @theme {
   --font-sans: "Space Grotesk Variable", Arial, sans-serif;
-  --color-page: #141619;
-  --color-surface: #1d2025;
-  --color-raised: #262a30;
-  --color-line: #363b44;
-  --color-muted: #a7adb8;
+  --color-page: #0f1114;
+  --color-surface: #171a1f;
+  --color-raised: #21252c;
+  --color-line: #2b3038;
+  --color-muted: #9ba2ae;
   --color-accent: #ff825c;
+  --color-win: #34d399;
+  --color-loss: #f87171;
+  --color-draw: #a1a1aa;
 }
 
 @layer base {
@@ -28,7 +31,8 @@
   button,
   a,
   input,
-  select {
+  select,
+  summary {
     @apply outline-offset-4 focus-visible:outline-2 focus-visible:outline-accent;
   }
   button,
@@ -36,7 +40,7 @@
     @apply transition-colors;
   }
   th {
-    @apply text-left text-sm font-medium text-muted;
+    @apply text-left text-xs font-medium text-muted;
   }
   td {
     @apply text-sm;
@@ -45,14 +49,11 @@
   td {
     @apply px-4 py-3 whitespace-nowrap;
   }
-  thead {
-    @apply border-b border-line bg-page/40;
-  }
   tbody tr {
-    @apply border-b border-line/60 last:border-0;
+    @apply border-t border-line/70;
   }
   select {
-    @apply rounded-md border border-line bg-raised px-3 py-2.5 text-sm;
+    @apply rounded-lg border border-line bg-raised px-3 py-2 text-sm text-zinc-100;
   }
   ::selection {
     @apply bg-accent/30;
@@ -60,17 +61,17 @@
 }
 
 @layer components {
-  .panel {
-    @apply overflow-hidden rounded-lg border border-line bg-surface;
+  .card {
+    @apply rounded-2xl bg-surface ring-1 ring-white/[.06];
   }
   .btn-primary {
-    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-zinc-950 hover:bg-orange-300;
+    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-orange-300;
   }
   .btn-secondary {
-    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-line bg-raised px-4 py-2.5 text-sm font-medium hover:bg-zinc-700;
+    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-raised px-3.5 py-2 text-sm font-medium ring-1 ring-white/[.06] hover:bg-zinc-700;
   }
-  .label {
-    @apply text-xs font-semibold tracking-wider text-muted uppercase;
+  .eyebrow {
+    @apply text-[11px] font-semibold tracking-[0.12em] text-muted uppercase;
   }
 }
 

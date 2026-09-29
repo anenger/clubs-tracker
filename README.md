@@ -1,6 +1,6 @@
 # Touchline · Clubs Tracker
 
-A player-first Next.js application for EA Clubs members, with a neutral charcoal/coral interface inspired by sports analytics products. Find your club, select your player, and navigate between Overview, Matches, Analytics, Compare, and Improve.
+A player-first Next.js application for EA Clubs members, with a charcoal/coral interface inspired by sports analytics products. Find your club, pick your gamertag, and switch between three sections: **Overview**, **Matches**, and **Squad**.
 
 ## Run locally
 
@@ -22,12 +22,12 @@ pnpm build
 
 ## Features
 
-- Personal season totals, rating chart, and recent league, friendly, and playoff results with full match reports.
-- Whole-squad, same-position, and individual teammate comparisons.
-- Explainable improvement opportunities and strengths, based on same-role peers with at least five appearances each.
-- Club/player selection remembered locally, without sign-in.
-- Responsive layouts, keyboard-accessible club search, empty/error states, and a sample squad.
-- Browser-calculated analytics for shooting, passing, tackling, goalkeeping, role splits, form, sessions, and lineup associations.
+- **Overview:** season stats with bars against same-position teammates, a form chart with last-5 rating change and record, one thing to work on and one to keep doing, and recent matches.
+- **Matches:** results grouped into playing sessions, with colour-coded ratings and full two-team match reports.
+- **Squad:** season comparison with your position or the whole squad, the teammates you play with most and how you do together, and the club's record.
+- One pinned bar for club, section, and competition (League, Friendlies, Playoffs); a compact player header with recent form.
+- Secondary context lives in info tooltips, "small sample" badges, and a single "About these numbers" section rather than on every stat.
+- Club/player selection remembered locally, without sign-in. Responsive layouts, keyboard-accessible search and dialogs, and a labelled demo club.
 - Supabase collection of raw responses and matches, with separate league, friendly, and playoff histories.
 
 ## Supabase data access
@@ -59,7 +59,7 @@ The Next.js build is a static export, so Vercel serves files without application
 - `src/lib/analytics.ts`: pure client-compatible calculations; no React, database, or HTTP dependencies.
 - `src/lib/stats.ts`: validated response normalization, nullable metrics, role-aware comparisons, and conservative gamertag association.
 - `src/lib/demo.ts`: illustrative data, never substituted silently for live results.
-- `src/components/dashboard.tsx`: player overview and navigation. Search, comparisons, matches, and development have focused components alongside it.
+- `src/components/dashboard.tsx`: data loading, pinned bar, player header, and section switching. `overview.tsx`, `matches.tsx`, and `squad.tsx` render each section; `ui.tsx` holds shared cards, chips, bars, and tooltips; `match-report.tsx` and `club-search.tsx` are the dialogs.
 - `src/components/use-selection.ts`: hydration-safe local preferences with cross-tab updates and a storage-unavailable fallback.
 
 ## Code quality

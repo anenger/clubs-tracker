@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef } from "react";
 import { competitions } from "@/lib/history-types";
 import { matchPlayer, matchResult, type Match, type Member } from "@/lib/stats";
+import { ResultChip, YouBadge, ratingTone } from "./ui";
 
 function value(number: number | null | undefined, digits = 0) {
   return number == null
@@ -73,16 +74,14 @@ function PlayerTable({
                   className="text-left font-medium tracking-normal text-zinc-100 normal-case"
                 >
                   {player.name || "Unnamed player"}
-                  {player.id === selectedId && (
-                    <span className="ml-2 text-xs text-accent">
-                      Selected · provisional
-                    </span>
-                  )}
+                  {player.id === selectedId && <YouBadge />}
                 </th>
                 <td className="capitalize">
                   {player.role === "unknown" ? "-" : (player.role ?? "-")}
                 </td>
-                <td>{value(player.rating, 1)}</td>
+                <td className={`font-semibold ${ratingTone(player.rating)}`}>
+                  {value(player.rating, 1)}
+                </td>
                 <td>{value(player.goals)}</td>
                 <td>{value(player.assists)}</td>
                 <td>{value(player.shots)}</td>
@@ -115,10 +114,12 @@ function PlayerTable({
 export function MatchReport({
   match,
   member,
+  clubName,
   onClose,
 }: {
   match: Match;
   member: Member;
+  clubName: string;
   onClose: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -148,30 +149,35 @@ export function MatchReport({
         event.preventDefault();
         onClose();
       }}
-      className="panel fixed inset-0 m-auto max-h-[90dvh] w-[calc(100%-2rem)] max-w-6xl overflow-y-auto p-5 text-zinc-100 shadow-2xl backdrop:bg-black/75 sm:p-7"
+      className="card fixed inset-0 m-auto max-h-[90dvh] w-[calc(100%-2rem)] max-w-6xl overflow-y-auto p-5 text-zinc-100 shadow-2xl backdrop:bg-black/75 sm:p-7"
     >
       <header className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-xs font-semibold tracking-widest text-accent uppercase">
-            Full match report
-          </p>
-          <h2 id={titleId} className="mt-2 text-2xl font-semibold">
-            Our club{" "}
-            <span className="tabular-nums">
-              {value(match.goals)} – {value(match.conceded)}
-            </span>{" "}
-            {match.opponent}
-          </h2>
-          <p className="mt-2 text-sm text-muted">
-            {new Date(match.timestamp).toLocaleString("en-GB", {
-              timeZone: "UTC",
-            })}{" "}
-            UTC ·{" "}
-            {competitions.find((item) => item.value === match.competition)
-              ?.label ?? "Competition unavailable"}{" "}
-            · Result {matchResult(match)}
-            {match.awardedByDnf && " · Awarded by DNF"}
-          </p>
+        <div className="flex items-center gap-4">
+          <ResultChip result={matchResult(match)} />
+          <div>
+            <h2 id={titleId} className="text-2xl font-semibold">
+              {clubName}{" "}
+              <span className="tabular-nums">
+                {value(match.goals)}–{value(match.conceded)}
+              </span>{" "}
+              {match.opponent}
+            </h2>
+            <p id={descriptionId} className="mt-1 text-sm text-muted">
+              {new Date(match.timestamp).toLocaleString("en-GB", {
+                weekday: "short",
+                day: "numeric",
+                month: "short",
+                hour: "2-digit",
+                minute: "2-digit",
+                timeZone: "UTC",
+              })}{" "}
+              UTC ·{" "}
+              {competitions.find((item) => item.value === match.competition)
+                ?.label ?? "Competition unknown"}
+              {match.awardedByDnf && " · Won by forfeit"}
+              {!player && ` · ${member.name} didn’t play`}
+            </p>
+          </div>
         </div>
         <button
           type="button"
@@ -181,16 +187,8 @@ export function MatchReport({
           Close<span className="sr-only"> match report</span>
         </button>
       </header>
-      <p id={descriptionId} className="mt-5 text-sm leading-relaxed text-muted">
-        {player
-          ? `${member.name} is provisionally associated by a unique exact gamertag match.`
-          : `No unique gamertag association found for ${member.name}.`}{" "}
-        This does not verify account ownership or survive renames. A dash (-)
-        means unavailable, not zero. Cards shown are red cards; yellow-card data
-        is unavailable.
-      </p>
       <PlayerTable
-        title="Our club"
+        title={clubName}
         players={match.players}
         selectedId={player?.id}
       />
@@ -199,8 +197,7 @@ export function MatchReport({
         players={match.opponentPlayers ?? []}
       />
       <p className="mt-5 text-xs text-muted">
-        Match ID: {match.id} · MOTM = player of the match. Positions and
-        statistics are as reported for this match.
+        — means EA didn’t report the number. Only red cards are available.
       </p>
     </dialog>
   );

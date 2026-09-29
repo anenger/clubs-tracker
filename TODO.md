@@ -19,7 +19,8 @@ Supabase Postgres stores source observations and collected matches. A publishabl
 
 ## Open follow-ups
 
-- [ ] Manually review the three text elements axe flags for possible low colour contrast.
+- [x] Redesign the UI: three sections, one pinned control bar, consolidated caveats, peer bars, session-grouped matches.
+- [ ] Manually review the chart labels axe can't evaluate automatically for colour contrast.
 - [ ] Optionally rotate the Supabase secret key (it was briefly stored as a hidden Vercel variable; never exposed).
 - [ ] Decide whether to add background collection. It is intentionally off; history grows only when someone views a club.
 - [ ] Consider throttling club search if Edge Function usage grows.

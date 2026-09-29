@@ -1,191 +1,292 @@
-import {
-  format,
-  matchPlayer,
-  matchResult,
-  type ClubData,
-  type Member,
-  type Match,
-} from "@/lib/stats";
+import { ChevronRight } from "lucide-react";
+import { matchPlayer, matchResult, type Match } from "@/lib/stats";
+import { Empty, RatingBadge, ResultChip, ratingTone } from "./ui";
 
-export function Matches({
-  data,
-  member,
-  limit,
+const SESSION_GAP = 90 * 60_000;
+
+function day(timestamp: number) {
+  return new Date(timestamp).toLocaleDateString("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  });
+}
+function time(timestamp: number) {
+  return new Date(timestamp).toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "UTC",
+  });
+}
+
+function MatchRow({
+  match,
+  memberName,
   onSelect,
+  showDay = true,
 }: {
-  data: ClubData;
-  member: Member;
-  limit?: number;
-  onSelect?: (match: Match) => void;
+  match: Match;
+  memberName: string;
+  onSelect: (match: Match) => void;
+  showDay?: boolean;
 }) {
-  const matches = limit ? data.matches.slice(0, limit) : data.matches;
+  const player = matchPlayer(match, memberName);
+  const result = matchResult(match);
+  const contributions = [
+    player?.goals ? `${player.goals}G` : null,
+    player?.assists ? `${player.assists}A` : null,
+  ].filter(Boolean);
   return (
-    <div
-      className="overflow-x-auto focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
-      tabIndex={0}
-      role="region"
-      aria-label="Match results, scroll horizontally for more stats"
-    >
-      <table className="w-full">
-        <thead>
-          <tr>
-            <th>Result</th>
-            <th>Opponent</th>
-            <th>Score</th>
-            <th>Goals</th>
-            <th>Assists</th>
-            <th className="text-right">Rating</th>
-            {onSelect && (
-              <th>
-                <span className="sr-only">Match report</span>
-              </th>
-            )}
-          </tr>
-        </thead>
-        <tbody>
-          {matches.map((match) => {
-            const player = matchPlayer(match, member.name);
-            const result = matchResult(match);
-            return (
-              <tr key={match.id} className="hover:bg-white/[.02]">
-                <td>
-                  <span
-                    className={`inline-flex h-8 w-8 items-center justify-center rounded text-sm font-bold ${result === "W" ? "bg-emerald-400/10 text-emerald-300" : result === "L" ? "bg-red-400/10 text-red-300" : "bg-zinc-400/10 text-zinc-300"}`}
-                  >
-                    {result}
-                  </span>
-                </td>
-                <td>
-                  <span className="block font-medium">{match.opponent}</span>
-                  <span className="mt-1 block text-xs text-muted">
-                    {new Date(match.timestamp).toLocaleDateString("en-GB", {
-                      day: "numeric",
-                      month: "short",
-                      timeZone: "UTC",
-                    })}
-                    {match.awardedByDnf && " · DNF win"}
-                  </span>
-                </td>
-                <td className="font-semibold tabular-nums">
-                  {format(match.goals, 0)}{" "}
-                  <span className="px-1 text-muted">–</span>{" "}
-                  {format(match.conceded, 0)}
-                </td>
-                <td>{format(player?.goals ?? null, 0)}</td>
-                <td>{format(player?.assists ?? null, 0)}</td>
-                <td className="text-right">
-                  <span
-                    className={`inline-block min-w-10 rounded px-2 py-1 text-center font-semibold tabular-nums ${(player?.rating ?? 0) >= 8 ? "bg-sky-400/10 text-sky-300" : "bg-raised"}`}
-                  >
-                    {format(player?.rating ?? null)}
-                  </span>
-                </td>
-                {onSelect && (
-                  <td className="text-right">
-                    <button
-                      className="min-h-10 rounded px-2 text-sm text-accent hover:bg-raised"
-                      onClick={() => onSelect(match)}
-                      aria-label={`View match report against ${match.opponent}`}
-                    >
-                      Report →
-                    </button>
-                  </td>
+    <li>
+      <button
+        type="button"
+        onClick={() => onSelect(match)}
+        aria-label={`Match report: ${match.goals ?? "?"}–${match.conceded ?? "?"} against ${match.opponent}`}
+        className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-white/[.03] sm:gap-4 sm:px-5"
+      >
+        <ResultChip result={result} />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-medium">{match.opponent}</span>
+          <span className="mt-0.5 block text-xs text-muted">
+            {showDay && `${day(match.timestamp)} · `}
+            {time(match.timestamp)}
+            {match.dnf && " · Forfeit"}
+            {!player && " · You didn’t play"}
+          </span>
+        </span>
+        <span className="w-14 text-center font-semibold tabular-nums">
+          {match.goals ?? "—"}–{match.conceded ?? "—"}
+        </span>
+        <span className="hidden w-14 text-sm text-muted tabular-nums sm:block">
+          {contributions.join(" ")}
+        </span>
+        {player ? (
+          <RatingBadge rating={player.rating} />
+        ) : (
+          <span className="min-w-11" />
+        )}
+        <ChevronRight size={16} className="text-muted" aria-hidden />
+      </button>
+    </li>
+  );
+}
+
+export function MatchList({
+  matches,
+  memberName,
+  onSelect,
+  grouped = false,
+}: {
+  matches: Match[];
+  memberName: string;
+  onSelect: (match: Match) => void;
+  grouped?: boolean;
+}) {
+  if (!matches.length)
+    return <Empty>No matches in this competition yet.</Empty>;
+  if (!grouped)
+    return (
+      <ul className="-mx-5 divide-y divide-line/70 sm:-mx-6">
+        {matches.map((match) => (
+          <MatchRow
+            key={match.id}
+            match={match}
+            memberName={memberName}
+            onSelect={onSelect}
+          />
+        ))}
+      </ul>
+    );
+
+  // Consecutive matches less than 90 minutes apart form one playing session.
+  const sessions: Match[][] = [];
+  for (const match of matches) {
+    const current = sessions.at(-1);
+    const last = current?.at(-1);
+    if (current && last && last.timestamp - match.timestamp <= SESSION_GAP)
+      current.push(match);
+    else sessions.push([match]);
+  }
+  return (
+    <div className="-mx-5 sm:-mx-6">
+      {sessions.map((session) => {
+        const results = session.map(matchResult);
+        const ratings = session
+          .map((m) => matchPlayer(m, memberName)?.rating)
+          .filter((r): r is number => typeof r === "number");
+        const average = ratings.length
+          ? ratings.reduce((a, b) => a + b, 0) / ratings.length
+          : null;
+        const newest = session[0]!;
+        const oldest = session.at(-1)!;
+        return (
+          <section
+            key={newest.id}
+            className="border-t border-line first:border-0"
+          >
+            <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 bg-white/[.02] px-4 py-2.5 sm:px-5">
+              <h3 className="text-sm font-medium">
+                {day(newest.timestamp)}{" "}
+                <span className="font-normal text-muted">
+                  {session.length > 1
+                    ? `${time(oldest.timestamp)}–${time(newest.timestamp)}`
+                    : time(newest.timestamp)}
+                </span>
+              </h3>
+              <p className="text-xs text-muted">
+                {results.filter((r) => r === "W").length}W{" "}
+                {results.filter((r) => r === "D").length}D{" "}
+                {results.filter((r) => r === "L").length}L
+                {average !== null && (
+                  <>
+                    {" · "}your avg{" "}
+                    <span className={`font-semibold ${ratingTone(average)}`}>
+                      {average.toFixed(1)}
+                    </span>
+                  </>
                 )}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-      {!matches.length && (
-        <p className="p-8 text-muted">
-          No matches available for this competition.
-        </p>
-      )}
+              </p>
+            </header>
+            <ul className="divide-y divide-line/70">
+              {session.map((match) => (
+                <MatchRow
+                  key={match.id}
+                  match={match}
+                  memberName={memberName}
+                  onSelect={onSelect}
+                  showDay={false}
+                />
+              ))}
+            </ul>
+          </section>
+        );
+      })}
     </div>
   );
 }
 
+const toneHex = (rating: number) =>
+  rating >= 8
+    ? "#34d399"
+    : rating >= 7
+      ? "#f4f4f5"
+      : rating >= 6
+        ? "#fcd34d"
+        : "#f87171";
+
+/** Rating per appearance, oldest to newest, with the player's average as a reference line. */
 export function RatingChart({
-  data,
-  member,
+  matches,
+  memberName,
+  limit = 20,
 }: {
-  data: ClubData;
-  member: Member;
+  matches: Match[];
+  memberName: string;
+  limit?: number;
 }) {
-  const all = [...data.matches].reverse();
-  const points = all.map((match, i) => ({
-    x: 35 + i * (600 / Math.max(all.length - 1, 1)),
-    rating: matchPlayer(match, member.name)?.rating ?? null,
-  }));
-  const valid = points.filter((p) => p.rating !== null);
-  const y = (rating: number) => 180 - Math.min(10, Math.max(0, rating)) * 15;
-  return valid.length ? (
-    <>
-      <svg
-        viewBox="0 0 665 215"
-        className="mt-4 w-full"
-        role="img"
-        aria-label={`Recent match ratings, oldest first: ${points.map((p) => p.rating ?? "unavailable").join(", ")}`}
+  const points = matches
+    .flatMap((match) => {
+      const rating = matchPlayer(match, memberName)?.rating;
+      return typeof rating === "number" ? [{ match, rating }] : [];
+    })
+    .slice(0, limit)
+    .reverse();
+  if (points.length < 2)
+    return <Empty>Play a couple more matches to see your form.</Empty>;
+
+  const ratings = points.map((p) => p.rating);
+  const low = Math.max(0, Math.floor(Math.min(...ratings) - 0.5));
+  const high = Math.min(10, Math.ceil(Math.max(...ratings) + 0.5));
+  const average = ratings.reduce((a, b) => a + b, 0) / ratings.length;
+  const width = 640,
+    height = 180,
+    left = 28,
+    right = 8,
+    top = 12,
+    bottom = 24;
+  const x = (i: number) =>
+    left + (i * (width - left - right)) / (points.length - 1);
+  const y = (r: number) =>
+    top + ((high - r) / (high - low || 1)) * (height - top - bottom);
+  const line = points.map((p, i) => `${x(i)},${y(p.rating)}`).join(" ");
+  const area = `${x(0)},${height - bottom} ${line} ${x(points.length - 1)},${height - bottom}`;
+  const ticks = [low, (low + high) / 2, high];
+
+  return (
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      className="w-full"
+      role="img"
+      aria-label={`Your last ${points.length} match ratings, oldest first: ${ratings.join(", ")}. Average ${average.toFixed(1)}.`}
+    >
+      <defs>
+        <linearGradient id="rating-area" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor="#ff825c" stopOpacity="0.25" />
+          <stop offset="100%" stopColor="#ff825c" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      {ticks.map((tick) => (
+        <g key={tick}>
+          <line
+            x1={left}
+            x2={width - right}
+            y1={y(tick)}
+            y2={y(tick)}
+            stroke="#2b3038"
+          />
+          <text
+            x={left - 8}
+            y={y(tick) + 4}
+            fill="#9ba2ae"
+            fontSize="11"
+            textAnchor="end"
+          >
+            {Number.isInteger(tick) ? tick : tick.toFixed(1)}
+          </text>
+        </g>
+      ))}
+      <line
+        x1={left}
+        x2={width - right}
+        y1={y(average)}
+        y2={y(average)}
+        stroke="#9ba2ae"
+        strokeDasharray="4 4"
+      />
+      <polygon points={area} fill="url(#rating-area)" />
+      <polyline
+        points={line}
+        fill="none"
+        stroke="#ff825c"
+        strokeWidth="2.5"
+        strokeLinejoin="round"
+      />
+      {points.map((p, i) => (
+        <circle
+          key={p.match.id}
+          cx={x(i)}
+          cy={y(p.rating)}
+          r="4.5"
+          fill={toneHex(p.rating)}
+          stroke="#171a1f"
+          strokeWidth="2"
+        >
+          <title>{`${p.rating.toFixed(1)} vs ${p.match.opponent} · ${day(p.match.timestamp)}`}</title>
+        </circle>
+      ))}
+      <text x={left} y={height - 4} fill="#9ba2ae" fontSize="11">
+        {day(points[0]!.match.timestamp)}
+      </text>
+      <text
+        x={width - right}
+        y={height - 4}
+        fill="#9ba2ae"
+        fontSize="11"
+        textAnchor="end"
       >
-        {[0, 5, 10].map((n) => (
-          <g key={n}>
-            <text x="0" y={y(n) + 4} fill="#a7adb8" fontSize="12">
-              {n}
-            </text>
-            <line
-              x1="35"
-              x2="635"
-              y1={y(n)}
-              y2={y(n)}
-              stroke="#363b44"
-              strokeDasharray="3 5"
-            />
-          </g>
-        ))}
-        {points.map((p, i) => {
-          const prev = points[i - 1];
-          return p.rating !== null && prev?.rating != null ? (
-            <line
-              key={i}
-              x1={prev.x}
-              y1={y(prev.rating)}
-              x2={p.x}
-              y2={y(p.rating)}
-              stroke="#ff825c"
-              strokeWidth="2.5"
-            />
-          ) : null;
-        })}
-        {points.map((p, i) =>
-          p.rating === null ? null : (
-            <g key={i}>
-              <circle cx={p.x} cy={y(p.rating)} r="4" fill="#ff825c" />
-              <text
-                x={p.x}
-                y={y(p.rating) - 14}
-                textAnchor="middle"
-                fill="#e4e4e7"
-                fontSize="12"
-              >
-                {p.rating}
-              </text>
-            </g>
-          ),
-        )}
-        <text x="35" y="210" fill="#a7adb8" fontSize="12">
-          Oldest
-        </text>
-        <text x="635" y="210" fill="#a7adb8" fontSize="12" textAnchor="end">
-          Latest
-        </text>
-      </svg>
-      <p className="mt-3 text-sm text-muted">
-        {valid.length} matched appearances · Selected competition
-      </p>
-    </>
-  ) : (
-    <div className="flex min-h-48 items-center justify-center text-muted">
-      No recent ratings for this player.
-    </div>
+        {day(points.at(-1)!.match.timestamp)}
+      </text>
+    </svg>
   );
 }
